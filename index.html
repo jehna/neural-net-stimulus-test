@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title></title>
+</head>
+
+<body>
+<button id="start">Start</button>
+<button id="stop">Stop</button>
+<button id="toggle">Toggle &Auml;rsytys</button>
+<hr />
+<script>
+
+var j = {
+    Lerp: function(from, to, p) {
+        return from + ((to-from)*p);
+    },
+    Random: function(from, to) {
+        return j.Lerp(from, to, Math.random())
+    },
+    RandomInt: function(from, to) {
+        return Math.floor(j.Random(from, to));
+    }
+}
+    
+var Cell = (function() {
+    function Cell(x,y) {
+        this.Randomize();
+        this.connections = [];
+        this.value = 0;
+        this.x = x;
+        this.y = y;
+    }
+    
+    Cell.prototype.Randomize = function() {
+        this.breakpoint = j.Random(-1,1);
+        this.multiplier = j.Random(-2,2);
+        this.readReduce = j.Random(0,1);
+    }
+    
+    Cell.prototype.Input = function(value) {
+        if( value > this.breakpoint ) {
+            this.value = value * this.multiplier;
+        }
+    }
+    
+    Cell.prototype.Output = function(amount) {
+        return this.value *= this.readReduce;
+    }
+    
+    Cell.prototype.Update = function(ctx) {
+        /*if (j.Random(0,1000) < 1) {
+            j.CONNECTIONS.push(new Connection(this));
+        }*/
+        
+        
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(255,0,0,"+Math.abs(this.value)+")";
+        ctx.beginPath();
+        ctx.arc(
+            this.x*10 + 20,
+            this.y*10 + 20,
+            1.1,
+            0,
+            2*Math.PI
+        )
+        ctx.fill();
+    }
+    
+    return Cell;
+})();
+
+var Connection = (function() {
+    function Connection(from, to) {
+        if (!from) {
+            from = this.RandomCell();
+        }
+        if (!to) {
+            to = this.RandomCell();
+        }
+        
+        this.from = from;
+        this.to = to;
+    }
+    
+    Connection.prototype.Update = function(ctx) {
+        var out = this.from.Output();
+        if (out > 0.2) {
+            ctx.globalCompositeOperation = "source-over";
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "rgba("+Math.floor(Math.abs(out)*100)+", 0, 0, 1)";
+            ctx.beginPath();
+            ctx.moveTo(
+                this.from.x*10+20,
+                this.from.y*10+20
+            )
+            ctx.lineTo(
+                this.to.x*10+20,
+                this.to.y*10+20
+            )
+            ctx.stroke();
+        }
+        this.to.Input(out);
+    }
+    
+    Connection.prototype.RandomCell = function() {
+        return j.WORLD[j.RandomInt(0,j.WORLD.length)];
+    }
+    
+    return Connection;
+})();
+
+
+
+
+var Renderer = (function() {
+    var Renderer = function() {
+        this.canvas = document.createElement("canvas");
+        this.canvas.width = this.canvas.height = 100 * 10;
+        document.getElementsByTagName("body")[0].appendChild(this.canvas);
+        this.ctx = this.canvas.getContext("2d");
+        
+        
+        this.loop = false;
+    }
+    
+    Renderer.prototype.Update = function() {
+        // Draw all nodes
+        for( var x = 0; x < j.WORLD.length; x++ ) {
+            j.WORLD[x].Update(this.ctx);
+        }
+        for( var x = 0; x < j.CONNECTIONS.length; x++ ) {
+            j.CONNECTIONS[x].Update(this.ctx);
+        }
+        
+        j.MOUSEINPUT.Update(this.ctx);
+        
+        // Darken
+        this.ctx.globalCompositeOperation = "lighten";
+        this.ctx.fillStyle = "rgba(255,255,255,0.1)";
+        this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height);
+    }
+    
+    Renderer.prototype.Start = function() {
+        var self = this;
+        this.loop = setInterval(function() {
+            self.Update();
+        },0/* 1000/60*/);
+    }
+    
+    Renderer.prototype.Stop = function() {
+        if (this.loop) {
+            clearInterval(this.loop);
+        }
+    }
+    
+    return Renderer;
+})();
+
+
+var MouseInput = (function() {
+    function MouseInput(element) {
+        var self = this;
+        self.x = 0;
+        self.y = 0,
+        element.onmousemove = function(e) {
+            var xCoor = e.clientX;
+            var yCoor = e.clientY;
+            
+            self.x = Math.floor((xCoor - 20) / 10);
+            self.y = Math.floor((yCoor - 20) / 10);
+        }
+    }
+    
+    MouseInput.prototype.Update = function() {
+        var curr = null;
+        /*
+        for (var i = 0; i < j.WORLD.length; i++ ) {
+            if (j.WORLD[i].x == this.x && j.WORLD[i].y == this.y) {
+                curr = j.WORLD[i];
+                break;
+            }
+        }
+        */
+        curr = j.WORLD[j.RandomInt(0, j.WORLD.length)];
+        if (curr && DO) {
+            curr.Input(1);
+        }
+    }
+    
+    return MouseInput;
+})();
+
+var DO = true;
+var WORD_DIMENSION = 50;
+var run = (function() {
+    // Generate worold
+    j.WORLD = [];
+    
+    for( var x = 0; x < WORD_DIMENSION; x++ ){
+        for( var y = 0; y < WORD_DIMENSION; y++ ){
+            j.WORLD.push( new Cell(x,y) );
+        }    
+    }
+    
+    j.CONNECTIONS = [];
+    for ( var i = 0; i < j.WORLD.length; i++ ) {
+        for (var ii = 0; ii < 10; ii++) {
+            j.CONNECTIONS.push(new Connection(j.WORLD[i]));
+        }
+    }
+    
+    j.RENDERER = new Renderer();
+    
+    j.MOUSEINPUT = new MouseInput(j.RENDERER.canvas);
+    
+    
+    document.getElementById("start").onclick = function() {
+        j.RENDERER.Start();
+    }
+    document.getElementById("stop").onclick = function() {
+        j.RENDERER.Stop();
+    }
+    document.getElementById("toggle").onclick = function() {
+        DO = !DO;
+    }
+})();
+
+
+</script>
+
+</body>
+</html>
